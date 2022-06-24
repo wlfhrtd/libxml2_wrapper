@@ -1,33 +1,42 @@
+/*
+ * Summary: libxml2 wrapper
+ * Description: extracts contents encased between html tags
+ * Libraries used: libiconv.1.14.0.11, libxml2.2.7.8.7
+ * 
+ * Author: strmbld wlfhrtd
+ * 
+ * All credit to libxml2 authors
+ */
+
 #include <iostream>
 #include <libxml/HTMLparser.h>
 #include <fstream>
+#include <vector>
+#include <algorithm>
 
 std::string output = "";
+std::vector<std::string> tags = {};
+
+bool isTag(xmlNode* cur_node)
+{
+    if (cur_node->parent->type == XML_ELEMENT_NODE)
+    {
+        std::string elemName = reinterpret_cast<const char*>(cur_node->parent->name);
+        return std::any_of(tags.cbegin(), tags.cend(), [elemName](std::string s) {return elemName == s; });
+    }
+    return false;
+}
 
 void traverse_dom_trees(xmlNode* a_node)
 {
     xmlNode* cur_node = NULL;
 
-    if (a_node == NULL)
-    {
-        // std::cerr << "Invalid argument a_node " << reinterpret_cast<const char*>(a_node->name) << "\n"; // always triggered and process always stops here somehow
-        // but fine with commented; interesting
-        return;
-    }
+    if (a_node == NULL) return;
 
     for (cur_node = a_node; cur_node; cur_node = cur_node->next)
     {
-        if (cur_node->type == XML_ELEMENT_NODE)
+        if (cur_node->type == XML_TEXT_NODE && isTag(cur_node))
         {
-            // check if current node should be excluded
-            output += "Node type: Text, name: ";
-            output += reinterpret_cast<const char*>(cur_node->name);
-            output += "\n";
-        }
-        else if (cur_node->type == XML_TEXT_NODE)
-        {
-            // process text node
-            output += "Node type: Text, node content: ";
             output += reinterpret_cast<const char*>(cur_node->content);
             output += "\n";
         }
@@ -39,13 +48,29 @@ int main(int argc, char** argv)
 {
     if (argc != 3)
     {
-        std::cerr << "\nInvalid argument\n";
+        std::cerr << "\nInvalid argument\n"
+                  << "Enter input/output filenames (e.g. input.html, result.txt)\n";
         return -1;
     }
 
     // macro to check api, should match to used dll
     LIBXML_TEST_VERSION
 
+    std::cout << "Enter tags (separated by space) for data that should be extracted.\n"
+              << "(e.g. li h2 b i a)"
+              << "Type 'quit' (without quotes) to stop input.\n";
+
+    while (true)
+    {
+        std::string s;
+        std::cin >> s;
+        if (s == "quit")
+        {
+            break;
+        }
+        tags.emplace_back(s);
+    }
+   
     htmlDocPtr document;
     xmlNode* root_element = NULL;
 
@@ -63,13 +88,9 @@ int main(int argc, char** argv)
     {
         std::cerr << "\nUnable to get RootElement or Document is empty\n";
         xmlFreeDoc(document);
-        return 0;
+        return -1;
     }
 
-    output += "Root Node is ";
-    output += reinterpret_cast<const char*>(root_element->name);
-    output += "\n";
-    
     traverse_dom_trees(root_element);
 
     std::ofstream out;
@@ -77,7 +98,7 @@ int main(int argc, char** argv)
     out << output;
     out.close();
 
-    xmlFreeDoc(document); // free document
-    xmlCleanupParser(); // free globals
+    xmlFreeDoc(document);
+    xmlCleanupParser();
     return 0;
 }
